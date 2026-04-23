@@ -6,9 +6,7 @@
 
     <q-card-section>
       <div class="row q-gutter-md items-end">
-        <div class="col text-subtitle2">
-          Выбрано файлов: {{ files.length }}
-        </div>
+        <div class="col text-subtitle2">Выбрано файлов: {{ files.length }}</div>
         <div>
           <q-btn
             color="primary"
@@ -43,7 +41,7 @@
       >
         <template v-slot:body-cell-filename="props">
           <q-td :props="props">
-            {{ props.row.path.split('/').pop() }}
+            {{ props.row.path.split("/").pop() }}
           </q-td>
         </template>
 
@@ -67,7 +65,7 @@
                 :options="years"
                 dense
                 outlined
-                style="width: 80px"
+                style="width: 110px"
                 @update:model-value="onPeriodChange"
               >
                 <template v-slot:prepend>
@@ -104,8 +102,20 @@ const $q = useQuasar();
 const files = ref([]);
 
 const columns = [
-  { name: "filename", label: "Файл", field: "path", align: "left", sortable: true },
-  { name: "period", label: "Период", field: "period", align: "left", sortable: true },
+  {
+    name: "filename",
+    label: "Файл",
+    field: "path",
+    align: "left",
+    sortable: true,
+  },
+  {
+    name: "period",
+    label: "Период",
+    field: "period",
+    align: "left",
+    sortable: true,
+  },
   { name: "remove", label: "", field: "path", align: "center" },
 ];
 
@@ -128,14 +138,32 @@ const years = ref(["2024", "2025", "2026", "2027", "2028", "2029", "2030"]);
 
 function getDefaultPeriod(filename) {
   const name = filename.toUpperCase();
-  
+
   const monthMap = {
-    ЯНВАРЬ: "01", ФЕВРАЛЬ: "02", МАРТ: "03", АПРЕЛЬ: "04",
-    МАЙ: "05", ИЮНЬ: "06", ИЮЛЬ: "07", АВГУСТ: "08",
-    СЕНТЯБРЬ: "09", ОКТЯБРЬ: "10", НОЯБРЬ: "11", ДЕКАБРЬ: "12",
-    JAN: "01", FEB: "02", MAR: "03", APR: "04",
-    MAY: "05", JUN: "06", JUL: "07", AUG: "08",
-    SEP: "09", OCT: "10", NOV: "11", DEC: "12",
+    ЯНВАРЬ: "01",
+    ФЕВРАЛЬ: "02",
+    МАРТ: "03",
+    АПРЕЛЬ: "04",
+    МАЙ: "05",
+    ИЮНЬ: "06",
+    ИЮЛЬ: "07",
+    АВГУСТ: "08",
+    СЕНТЯБРЬ: "09",
+    ОКТЯБРЬ: "10",
+    НОЯБРЬ: "11",
+    ДЕКАБРЬ: "12",
+    JAN: "01",
+    FEB: "02",
+    MAR: "03",
+    APR: "04",
+    MAY: "05",
+    JUN: "06",
+    JUL: "07",
+    AUG: "08",
+    SEP: "09",
+    OCT: "10",
+    NOV: "11",
+    DEC: "12",
   };
 
   let month = String(new Date().getMonth() + 1).padStart(2, "0");
@@ -160,14 +188,14 @@ async function selectFiles() {
     const paths = await window.electronAPI.selectFiles();
     if (paths && paths.length > 0) {
       for (const path of paths) {
-        if (!files.value.find(f => f.path === path)) {
-          const filename = path.split('/').pop();
+        if (!files.value.find((f) => f.path === path)) {
+          const filename = path.split("/").pop();
           const period = getDefaultPeriod(filename);
-          files.value.push({ 
-            path, 
-            month: period.month, 
+          files.value.push({
+            path,
+            month: period.month,
             year: period.year,
-            id: Date.now() + Math.random() 
+            id: Date.now() + Math.random(),
           });
         }
       }
@@ -182,7 +210,7 @@ async function selectFiles() {
 }
 
 function removeFile(path) {
-  files.value = files.value.filter(f => f.path !== path);
+  files.value = files.value.filter((f) => f.path !== path);
   emitFilesChanged();
 }
 
