@@ -7,7 +7,26 @@
     "dev": "vite",
     "build": "vite build",
     "electron:dev": "NODE_ENV=development vite",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build && electron-builder --mac --universal",
+    "electron:build:win": "vite build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.attendance.tracker",
+    "productName": "AttendanceTracker",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "target": ["nsis"]
+    }
   },
   "keywords": [],
   "author": "",
