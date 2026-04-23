@@ -43,6 +43,7 @@
         :pagination="{ rowsPerPage: 0 }"
         flat
         bordered
+        :sort-method="customSort"
       >
         <template v-slot:header="props">
           <q-tr :props="props">
@@ -128,33 +129,50 @@ const columns = computed(() => {
       field: (row) => row.colorCounts?.[code] || 0,
       align: "center",
       sortable: true,
-      sort: (a, b) => {
-        const valsA = periodValues.value[a.employee]?.[code] || [];
-        const valsB = periodValues.value[b.employee]?.[code] || [];
-
-        const lastA = valsA[valsA.length - 1] || 0;
-        const prevA = valsA[valsA.length - 2] || 0;
-        const trendA = lastA - prevA;
-
-        const lastB = valsB[valsB.length - 1] || 0;
-        const prevB = valsB[valsB.length - 2] || 0;
-        const trendB = lastB - prevB;
-
-        // 1. Sort by trend direction (Up > Stable > Down)
-        if (trendA > trendB) return -1;
-        if (trendA < trendB) return 1;
-
-        // 2. Sort by last value (Descending)
-        if (lastA > lastB) return -1;
-        if (lastA < lastB) return 1;
-
-        return 0;
-      }
     });
   }
 
   return base;
 });
+
+function customSort(rows, sortBy, descending) {
+  if (!sortBy) return rows;
+
+  if (sortBy.startsWith("color_")) {
+    const code = sortBy.replace("color_", "");
+    return [...rows].sort((a, b) => {
+      const valsA = periodValues.value[a.employee]?.[code] || [];
+      const valsB = periodValues.value[b.employee]?.[code] || [];
+
+      const lastA = valsA[valsA.length - 1] || 0;
+      const prevA = valsA[valsA.length - 2] || 0;
+      const trendA = lastA - prevA;
+
+      const lastB = valsB[valsB.length - 1] || 0;
+      const prevB = valsB[valsB.length - 2] || 0;
+      const trendB = lastB - prevB;
+
+      let res = 0;
+      // 1. Направление тренда: Рост > Стабильно > Падение
+      if (trendA > trendB) res = -1;
+      else if (trendA < trendB) res = 1;
+      // 2. Внутри группы по последнему значению (убывание)
+      else if (lastA > lastB) res = -1;
+      else if (lastA < lastB) res = 1;
+
+      return descending ? -res : res;
+    });
+  }
+
+  // Стандартная сортировка для остальных колонок
+  return [...rows].sort((a, b) => {
+    const valA = a[sortBy];
+    const valB = b[sortBy];
+    if (valA < valB) return descending ? 1 : -1;
+    if (valA > valB) return descending ? -1 : 1;
+    return 0;
+  });
+}
 
 function getColorHeaderStyle(colName) {
   if (colName.startsWith("color_")) {
