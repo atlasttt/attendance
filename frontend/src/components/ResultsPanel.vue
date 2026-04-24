@@ -49,12 +49,25 @@
           label="Сортировка"
           dense
           outlined
-          style="min-width: 250px"
+          style="min-width: 280px"
           emit-value
           map-options
         >
           <template v-slot:prepend>
             <q-icon name="sort" />
+          </template>
+          <template v-slot:option="scope">
+            <q-item v-bind="scope.itemProps" class="sort-option">
+              <q-item-section>
+                <div class="sort-label">
+                  <span v-if="scope.opt.color"
+                    class="color-circle"
+                    :style="{ backgroundColor: scope.opt.hex }"
+                  />
+                  <span class="sort-label-text">{{ scope.opt.label }}</span>
+                </div>
+              </q-item-section>
+            </q-item>
           </template>
         </q-select>
         <q-input
@@ -159,28 +172,40 @@ const sortOptions = computed(() => {
   // Динамические сортировки по цветам и трендам
   for (const code of colorCodes.value) {
     options.push({
-      label: `🎨 #${code} (↓)`,
+      label: "По количеству (↓)",
       value: `color_${code}_desc`,
+      color: true,
+      hex: `#${code}`,
     });
     options.push({
-      label: `🎨 #${code} (↑)`,
+      label: "По количеству (↑)",
       value: `color_${code}_asc`,
+      color: true,
+      hex: `#${code}`,
     });
     options.push({
-      label: `🔢 #${code} последний (↓)`,
+      label: "Последний (↓)",
       value: `last_${code}_desc`,
+      color: true,
+      hex: `#${code}`,
     });
     options.push({
-      label: `🔢 #${code} последний (↑)`,
+      label: "Последний (↑)",
       value: `last_${code}_asc`,
+      color: true,
+      hex: `#${code}`,
     });
     options.push({
-      label: `📈 Тренд #${code} (рост ↓)`,
+      label: "Тренд (рост ↓)",
       value: `trend_${code}_desc`,
+      color: true,
+      hex: `#${code}`,
     });
     options.push({
-      label: `📉 Тренд #${code} (падение ↓)`,
+      label: "Тренд (падение ↓)",
       value: `trend_${code}_asc`,
+      color: true,
+      hex: `#${code}`,
     });
   }
 
@@ -625,3 +650,18 @@ defineExpose({
   countSelected,
 });
 </script>
+
+<style scoped>
+.sort-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sort-option .color-circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #ccc;
+  flex-shrink: 0;
+}
+</style>
