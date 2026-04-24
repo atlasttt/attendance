@@ -80,9 +80,10 @@
         :columns="columns"
         row-key="key"
         :loading="loading"
-        :pagination="{ rowsPerPage: 0 }"
+        :pagination="{ rowsPerPage: 0, sortBy: '', sortDesc: false }"
         flat
         bordered
+        @request="onTableRequest"
       >
         <template v-slot:header="props">
           <q-tr :props="props">
@@ -306,7 +307,7 @@ const columns = computed(() => {
       label: "Сотрудник",
       field: "employee",
       align: "left",
-      sortable: true,
+      sortable: false,
       required: true,
     },
     {
@@ -314,7 +315,7 @@ const columns = computed(() => {
       label: "Должность",
       field: "position",
       align: "left",
-      sortable: true,
+      sortable: false,
     },
   ];
 
@@ -325,7 +326,7 @@ const columns = computed(() => {
       label: `#${code}`,
       field: (row) => row.colorCounts?.[code] || 0,
       align: "center",
-      sortable: true,
+      sortable: false,
     });
   }
 
@@ -609,6 +610,14 @@ function showEmployee(key) {
 function showAllHidden() {
   hiddenEmployees.value.clear();
   hiddenEmployees.value = new Set(hiddenEmployees.value);
+}
+
+// Отключаем сортировку по клику на шапку
+function onTableRequest(props) {
+  // Сбрасываем сортировку Quasar - используем только наш селект
+  props.pagination.sortBy = '';
+  props.pagination.sortDesc = false;
+  props.done();
 }
 
 defineExpose({
