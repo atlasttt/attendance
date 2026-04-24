@@ -166,6 +166,14 @@ const sortOptions = computed(() => {
       value: `color_${code}_asc`,
     });
     options.push({
+      label: `🔢 #${code} последний (↓)`,
+      value: `last_${code}_desc`,
+    });
+    options.push({
+      label: `🔢 #${code} последний (↑)`,
+      value: `last_${code}_asc`,
+    });
+    options.push({
       label: `📈 Тренд #${code} (рост ↓)`,
       value: `trend_${code}_desc`,
     });
@@ -200,8 +208,10 @@ const filteredResults = computed(() => {
   const threshold = Number(minCount.value) || 0;
   if (threshold > 0) {
     filtered = filtered.filter((r) => {
+      const totalCount = r.count || 0;
+      
       // Проверяем общее количество
-      if ((r.count || 0) > threshold) return true;
+      if (totalCount > threshold) return true;
       
       // Проверяем значения по периодам для каждого цвета
       for (const code of colorCodes.value) {
@@ -234,7 +244,7 @@ const filteredResults = computed(() => {
       return (a.count || 0) - (b.count || 0);
     }
 
-    // По цвету
+    // По цвету (агрегированное значение)
     if (sort.startsWith("color_")) {
       const rest = sort.replace("color_", "");
       const direction = rest.endsWith("_desc") ? "desc" : "asc";
@@ -242,6 +252,19 @@ const filteredResults = computed(() => {
       const valA = a.colorCounts?.[code] || 0;
       const valB = b.colorCounts?.[code] || 0;
       return direction === "desc" ? valB - valA : valA - valB;
+    }
+
+    // По последнему периоду
+    if (sort.startsWith("last_")) {
+      const rest = sort.replace("last_", "");
+      const direction = rest.endsWith("_desc") ? "desc" : "asc";
+      const code = rest.replace(/_(asc|desc)$/, "");
+      const valsA = periodValues.value[a.employee]?.[code] || [];
+      const valsB = periodValues.value[b.employee]?.[code] || [];
+
+      const lastA = valsA[valsA.length - 1] || 0;
+      const lastB = valsB[valsB.length - 1] || 0;
+      return direction === "desc" ? lastB - lastA : lastA - lastB;
     }
 
     // По тренду
@@ -454,15 +477,20 @@ async function countSelected() {
     periods.value = sortedPeriods;
 
     // Формируем periodValues: { employee: { colorCode: [val1, val2, val3] } }
+    // Включаем ВСЕХ сотрудников из ВСЕХ периодов
     const pValues = {};
-    for (const empKey of Object.keys(periodMap[sortedPeriods[0]] || {})) {
-      const emp = periodMap[sortedPeriods[0]][empKey];
-      pValues[emp.employee] = {};
-      for (const c of selectedColors) {
-        pValues[emp.employee][c] = sortedPeriods.map((p) => {
-          const periodEmp = periodMap[p]?.[empKey];
-          return periodEmp?.colorCounts[c] || 0;
-        });
+    for (const period of sortedPeriods) {
+      for (const empKey of Object.keys(periodMap[period] || {})) {
+        const emp = periodMap[period][empKey];
+        if (!pValues[emp.employee]) {
+          pValues[emp.employee] = {};
+          selectedColors.forEach(c => {
+            pValues[emp.employee][c] = [];
+          });
+        }
+        for (const c of selectedColors) {
+          pValues[emp.employee][c].push(emp.colorCounts[c] || 0);
+        }
       }
     }
 
