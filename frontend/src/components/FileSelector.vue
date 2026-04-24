@@ -12,7 +12,15 @@
             color="primary"
             label="Добавить файлы"
             icon="add"
-            @click="selectFiles"
+            @click="triggerFileInput"
+          />
+          <input
+            ref="fileInput"
+            type="file"
+            multiple
+            accept=".xlsx,.xls"
+            style="display: none"
+            @change="onFileSelect"
           />
         </div>
         <div>
@@ -25,6 +33,19 @@
           />
         </div>
       </div>
+
+      <!-- Drag & Drop зона -->
+      <div
+        class="q-mt-md drop-zone"
+        :class="{ 'drop-zone--active': isDragging }"
+        @dragover.prevent="isDragging = true"
+        @dragleave.prevent="isDragging = false"
+        @drop.prevent="onDrop"
+      >
+        <div class="text-center text-caption text-grey-7">
+          Перетащите Excel-файлы сюда
+        </div>
+      </div>
     </q-card-section>
 
     <q-separator />
@@ -33,7 +54,7 @@
       <q-table
         :rows="files"
         :columns="columns"
-        row-key="path"
+        row-key="id"
         dense
         flat
         bordered
@@ -41,7 +62,7 @@
       >
         <template v-slot:body-cell-filename="props">
           <q-td :props="props">
-            {{ props.row.path.split("/").pop() }}
+            {{ props.row.file.name }}
           </q-td>
         </template>
 
@@ -83,7 +104,7 @@
               dense
               color="negative"
               icon="close"
-              @click="removeFile(props.row.path)"
+              @click="removeFile(props.row.id)"
             />
           </q-td>
         </template>
@@ -99,13 +120,15 @@ import { useQuasar } from "quasar";
 const emit = defineEmits(["files-changed"]);
 const $q = useQuasar();
 
+const fileInput = ref(null);
 const files = ref([]);
+const isDragging = ref(false);
 
 const columns = [
   {
     name: "filename",
     label: "Файл",
-    field: "path",
+    field: "file",
     align: "left",
     sortable: true,
   },
@@ -116,7 +139,7 @@ const columns = [
     align: "left",
     sortable: true,
   },
-  { name: "remove", label: "", field: "path", align: "center" },
+  { name: "remove", label: "", field: "id", align: "center" },
 ];
 
 const months = ref([
@@ -183,34 +206,50 @@ function getDefaultPeriod(filename) {
   return { month, year };
 }
 
-async function selectFiles() {
-  try {
-    const paths = await window.electronAPI.selectFiles();
-    if (paths && paths.length > 0) {
-      for (const path of paths) {
-        if (!files.value.find((f) => f.path === path)) {
-          const filename = path.split("/").pop();
-          const period = getDefaultPeriod(filename);
-          files.value.push({
-            path,
-            month: period.month,
-            year: period.year,
-            id: Date.now() + Math.random(),
-          });
-        }
-      }
-      emitFilesChanged();
-    }
-  } catch (error) {
-    $q.notify({
-      color: "negative",
-      message: "Ошибка выбора файлов: " + error.message,
-    });
-  }
+function triggerFileInput() {
+  fileInput.value.click();
 }
 
-function removeFile(path) {
-  files.value = files.value.filter((f) => f.path !== path);
+function onFileSelect(event) {
+  const selectedFiles = Array.from(event.target.files);
+  addFiles(selectedFiles);
+  // Сбрасываем input, чтобы можно было выбрать те же файлы
+  event.target.value = '';
+}
+
+function onDrop(event) {
+  isDragging.value = false;
+  const droppedFiles = Array.from(event.dataTransfer.files).filter(
+    file => file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+  );
+  addFiles(droppedFiles);
+}
+
+function addFiles(newFiles) {
+  if (newFiles.length === 0) {
+    $q.notify({
+      color: "warning",
+      message: "Выберите Excel-файлы (.xlsx)",
+    });
+    return;
+  }
+
+  for (const file of newFiles) {
+    if (!files.value.find((f) => f.file.name === file.name && f.file.size === file.size)) {
+      const period = getDefaultPeriod(file.name);
+      files.value.push({
+        file,
+        month: period.month,
+        year: period.year,
+        id: Date.now() + Math.random(),
+      });
+    }
+  }
+  emitFilesChanged();
+}
+
+function removeFile(id) {
+  files.value = files.value.filter((f) => f.id !== id);
   emitFilesChanged();
 }
 
@@ -231,3 +270,18 @@ defineExpose({
   files,
 });
 </script>
+
+<style scoped>
+.drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 20px;
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.drop-zone--active {
+  border-color: var(--q-primary);
+  background: rgba(var(--q-primary), 0.1);
+}
+</style>

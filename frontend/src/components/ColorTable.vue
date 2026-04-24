@@ -54,7 +54,7 @@ import api from "../services/api.js";
 const $q = useQuasar();
 const loading = ref(false);
 const colors = ref([]);
-const currentPaths = ref([]);
+const currentFileObjects = ref([]);
 
 const columns = [
   {
@@ -83,24 +83,31 @@ const columns = [
 ];
 
 function handleScanClick() {
-  scanColors(currentPaths.value);
+  scanColors(currentFileObjects.value);
 }
 
-async function scanColors(paths) {
-  // Преобразуем в массив строк, чтобы избежать ошибки клонирования Vue-реактивности
-  const pathsToScan = Array.isArray(paths) 
-    ? paths.map(p => typeof p === 'object' && p.path ? p.path : p) 
+async function scanColors(fileObjects) {
+  // Извлекаем File objects из массива
+  const filesToScan = Array.isArray(fileObjects)
+    ? fileObjects.map(f => f.file || f)
     : [];
 
-  if (pathsToScan.length === 0) {
+  if (filesToScan.length === 0) {
     $q.notify({ color: "warning", message: "Сначала выберите файлы!" });
     return;
   }
 
-  currentPaths.value = pathsToScan;
+  currentFileObjects.value = filesToScan;
   loading.value = true;
   try {
-    const response = await api.scanColors(pathsToScan);
+    const response = await api.scanColors(filesToScan);
+    if (response.error) {
+      $q.notify({
+        color: "negative",
+        message: response.error,
+      });
+      return;
+    }
     colors.value = response.colors.map((c) => ({
       ...c,
       selected: isDefaultSelected(c.code),

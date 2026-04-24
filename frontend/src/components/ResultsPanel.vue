@@ -14,9 +14,49 @@
         />
         <q-btn
           color="secondary"
-          label="📋 Экспорт в Excel"
+          label="📋 Экспорт всех"
           @click="exportExcel"
         />
+        <q-btn
+          color="info"
+          label="📋 Экспорт видимых"
+          @click="exportVisibleExcel"
+          :disable="filteredResults.length === 0"
+        />
+        <q-btn
+          v-if="hiddenEmployees.size > 0"
+          color="warning"
+          :label="`👁 Показать скрытых (${hiddenEmployees.size})`"
+          @click="showAllHidden"
+          outline
+        />
+        <q-input
+          v-model="minCount"
+          label="Мин. кол-во"
+          type="number"
+          dense
+          outlined
+          style="width: 120px"
+          min="0"
+        >
+          <template v-slot:prepend>
+            <q-icon name="filter_list" />
+          </template>
+        </q-input>
+        <q-select
+          v-model="sortOption"
+          :options="sortOptions"
+          label="Сортировка"
+          dense
+          outlined
+          style="min-width: 250px"
+          emit-value
+          map-options
+        >
+          <template v-slot:prepend>
+            <q-icon name="sort" />
+          </template>
+        </q-select>
         <q-input
           v-model="searchQuery"
           label="Поиск"
@@ -43,7 +83,6 @@
         :pagination="{ rowsPerPage: 0 }"
         flat
         bordered
-        :sort-method="customSort"
       >
         <template v-slot:header="props">
           <q-tr :props="props">
@@ -60,7 +99,19 @@
 
         <template v-slot:body-cell="props">
           <q-td :props="props" :style="getColorCellStyle(props.col.name)">
-            <template v-if="props.col.name.startsWith('color_')">
+            <template v-if="props.col.name === 'hide'">
+              <q-btn
+                flat
+                dense
+                color="grey-6"
+                icon="close"
+                size="sm"
+                @click="hideEmployee(props.row.key)"
+              >
+                <q-tooltip>Скрыть сотрудника</q-tooltip>
+              </q-btn>
+            </template>
+            <template v-else-if="props.col.name.startsWith('color_')">
               <span v-html="getCellValue(props.row, props.col.name)"></span>
             </template>
             <template v-else>
@@ -89,21 +140,144 @@ const results = ref([]);
 const colorCodes = ref([]);
 const rawResults = ref([]); // Для экспорта — без агрегации
 const searchQuery = ref("");
+const sortOption = ref("employee_asc");
+const minCount = ref(0); // Минимальный порог для фильтрации
+const hiddenEmployees = ref(new Set()); // Скрытые сотрудники
 const periodValues = ref({}); // { employee: { colorCode: [val1, val2, val3] } }
 const periods = ref([]); // Список периодов для отображения
 
+// Варианты сортировки
+const sortOptions = computed(() => {
+  const options = [
+    { label: "🔤 По имени (А→Я)", value: "employee_asc" },
+    { label: "🔤 По имени (Я→А)", value: "employee_desc" },
+    { label: "📊 По общему количеству (↓)", value: "count_desc" },
+    { label: "📊 По общему количеству (↑)", value: "count_asc" },
+  ];
+
+  // Динамические сортировки по цветам и трендам
+  for (const code of colorCodes.value) {
+    options.push({
+      label: `🎨 #${code} (↓)`,
+      value: `color_${code}_desc`,
+    });
+    options.push({
+      label: `🎨 #${code} (↑)`,
+      value: `color_${code}_asc`,
+    });
+    options.push({
+      label: `📈 Тренд #${code} (рост ↓)`,
+      value: `trend_${code}_desc`,
+    });
+    options.push({
+      label: `📉 Тренд #${code} (падение ↓)`,
+      value: `trend_${code}_asc`,
+    });
+  }
+
+  return options;
+});
+
 const filteredResults = computed(() => {
-  if (!searchQuery.value) return results.value;
-  const query = searchQuery.value.toLowerCase();
-  return results.value.filter(
-    (r) =>
-      r.employee?.toLowerCase().includes(query) ||
-      r.position?.toLowerCase().includes(query),
-  );
+  let filtered = results.value;
+
+  // Фильтрация скрытых сотрудников
+  if (hiddenEmployees.value.size > 0) {
+    filtered = filtered.filter((r) => !hiddenEmployees.value.has(r.key));
+  }
+
+  // Фильтрация по поиску
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase();
+    filtered = filtered.filter(
+      (r) =>
+        r.employee?.toLowerCase().includes(query) ||
+        r.position?.toLowerCase().includes(query),
+    );
+  }
+
+  // Фильтрация по минимальному количеству
+  const threshold = Number(minCount.value) || 0;
+  if (threshold > 0) {
+    filtered = filtered.filter((r) => {
+      // Проверяем общее количество
+      if ((r.count || 0) > threshold) return true;
+      
+      // Проверяем значения по периодам для каждого цвета
+      for (const code of colorCodes.value) {
+        const values = periodValues.value[r.employee]?.[code] || [];
+        for (const val of values) {
+          if (val > threshold) return true;
+        }
+      }
+      
+      return false;
+    });
+  }
+
+  // Сортировка
+  const sort = sortOption.value;
+  const sorted = [...filtered].sort((a, b) => {
+    // По имени
+    if (sort === "employee_asc") {
+      return a.employee.localeCompare(b.employee, "ru");
+    }
+    if (sort === "employee_desc") {
+      return b.employee.localeCompare(a.employee, "ru");
+    }
+
+    // По общему количеству
+    if (sort === "count_desc") {
+      return (b.count || 0) - (a.count || 0);
+    }
+    if (sort === "count_asc") {
+      return (a.count || 0) - (b.count || 0);
+    }
+
+    // По цвету
+    if (sort.startsWith("color_")) {
+      const rest = sort.replace("color_", "");
+      const direction = rest.endsWith("_desc") ? "desc" : "asc";
+      const code = rest.replace(/_(asc|desc)$/, "");
+      const valA = a.colorCounts?.[code] || 0;
+      const valB = b.colorCounts?.[code] || 0;
+      return direction === "desc" ? valB - valA : valA - valB;
+    }
+
+    // По тренду
+    if (sort.startsWith("trend_")) {
+      const rest = sort.replace("trend_", "");
+      const direction = rest.endsWith("_desc") ? "desc" : "asc";
+      const code = rest.replace(/_(asc|desc)$/, "");
+      const valsA = periodValues.value[a.employee]?.[code] || [];
+      const valsB = periodValues.value[b.employee]?.[code] || [];
+
+      const lastA = valsA[valsA.length - 1] || 0;
+      const prevA = valsA[valsA.length - 2] || 0;
+      const trendA = lastA - prevA;
+
+      const lastB = valsB[valsB.length - 1] || 0;
+      const prevB = valsB[valsB.length - 2] || 0;
+      const trendB = lastB - prevB;
+
+      return direction === "desc" ? trendB - trendA : trendA - trendB;
+    }
+
+    return 0;
+  });
+
+  return sorted;
 });
 
 const columns = computed(() => {
   const base = [
+    {
+      name: "hide",
+      label: "",
+      field: "key",
+      align: "center",
+      sortable: false,
+    },
     {
       name: "employee",
       label: "Сотрудник",
@@ -134,45 +308,6 @@ const columns = computed(() => {
 
   return base;
 });
-
-function customSort(rows, sortBy, descending) {
-  if (!sortBy) return rows;
-
-  if (sortBy.startsWith("color_")) {
-    const code = sortBy.replace("color_", "");
-    return [...rows].sort((a, b) => {
-      const valsA = periodValues.value[a.employee]?.[code] || [];
-      const valsB = periodValues.value[b.employee]?.[code] || [];
-
-      const lastA = valsA[valsA.length - 1] || 0;
-      const prevA = valsA[valsA.length - 2] || 0;
-      const trendA = lastA - prevA;
-
-      const lastB = valsB[valsB.length - 1] || 0;
-      const prevB = valsB[valsB.length - 2] || 0;
-      const trendB = lastB - prevB;
-
-      let res = 0;
-      // 1. Направление тренда: Рост > Стабильно > Падение
-      if (trendA > trendB) res = -1;
-      else if (trendA < trendB) res = 1;
-      // 2. Внутри группы по последнему значению (убывание)
-      else if (lastA > lastB) res = -1;
-      else if (lastA < lastB) res = 1;
-
-      return descending ? -res : res;
-    });
-  }
-
-  // Стандартная сортировка для остальных колонок
-  return [...rows].sort((a, b) => {
-    const valA = a[sortBy];
-    const valB = b[sortBy];
-    if (valA < valB) return descending ? 1 : -1;
-    if (valA > valB) return descending ? -1 : 1;
-    return 0;
-  });
-}
 
 function getColorHeaderStyle(colName) {
   if (colName.startsWith("color_")) {
@@ -266,11 +401,12 @@ async function countSelected() {
 
     // Для каждого файла вызываем подсчёт с его периодом
     const allResults = [];
-    for (const file of props.files) {
+    for (const fileItem of props.files) {
+      const fileObject = fileItem.file || fileItem;
       const response = await api.countSelected({
-        filePaths: [file.path],
-        month: file.month,
-        year: file.year,
+        fileObjects: [fileObject],
+        month: fileItem.month,
+        year: fileItem.year,
         colors: selectedColors,
       });
       if (response.results) {
@@ -343,6 +479,9 @@ async function countSelected() {
           position: r.position,
           colorCounts: {},
           date: r.date,
+          month: r.month,
+          year: r.year,
+          files: r.files || [],
         };
         selectedColors.forEach((c) => (empMap[key].colorCounts[c] = 0));
       }
@@ -362,6 +501,12 @@ async function countSelected() {
       })
       .sort((a, b) => a.employee.localeCompare(b.employee, "ru"));
 
+    // Сбрасываем сортировку на дефолтную
+    sortOption.value = "employee_asc";
+
+    // Сбрасываем скрытых сотрудников
+    hiddenEmployees.value.clear();
+
     $q.notify({
       color: "positive",
       message: `Обработано ${results.value.length} сотрудников`,
@@ -376,30 +521,66 @@ async function countSelected() {
   }
 }
 
-async function saveResults() {
-  try {
-    await api.saveResults(results.value);
-    $q.notify({ color: "positive", message: "Результаты сохранены" });
-  } catch (error) {
-    $q.notify({
-      color: "negative",
-      message: "Ошибка сохранения: " + error.message,
-    });
-  }
-}
-
 async function exportExcel() {
   try {
-    // Сериализуем для удаления реактивности Vue перед передачей в IPC
+    // Сериализуем для удаления реактивности Vue
     const data = JSON.parse(JSON.stringify(rawResults.value));
-    await api.exportExcel(data);
-    $q.notify({ color: "positive", message: "Экспорт завершён" });
+    const result = await api.exportExcel(data);
+    if (result.error) {
+      $q.notify({
+        color: "negative",
+        message: result.error,
+      });
+    } else {
+      $q.notify({ color: "positive", message: "Экспорт завершён" });
+    }
   } catch (error) {
     $q.notify({
       color: "negative",
       message: "Ошибка экспорта: " + error.message,
     });
   }
+}
+
+// Экспорт видимых данных (с учётом всех фильтров и сортировки)
+async function exportVisibleExcel() {
+  try {
+    const data = JSON.parse(JSON.stringify(filteredResults.value));
+    const pValues = JSON.parse(JSON.stringify(periodValues.value));
+    const result = await api.exportVisibleExcel(data, colorCodes.value, pValues);
+    if (result.error) {
+      $q.notify({
+        color: "negative",
+        message: result.error,
+      });
+    } else {
+      $q.notify({
+        color: "positive",
+        message: `Экспортировано ${data.length} записей`,
+      });
+    }
+  } catch (error) {
+    $q.notify({
+      color: "negative",
+      message: "Ошибка экспорта: " + error.message,
+    });
+  }
+}
+
+// Управление скрытыми сотрудниками
+function hideEmployee(key) {
+  hiddenEmployees.value.add(key);
+  hiddenEmployees.value = new Set(hiddenEmployees.value); // триггер реактивности
+}
+
+function showEmployee(key) {
+  hiddenEmployees.value.delete(key);
+  hiddenEmployees.value = new Set(hiddenEmployees.value);
+}
+
+function showAllHidden() {
+  hiddenEmployees.value.clear();
+  hiddenEmployees.value = new Set(hiddenEmployees.value);
 }
 
 defineExpose({

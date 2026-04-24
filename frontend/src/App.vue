@@ -12,9 +12,9 @@
       <q-page class="q-pa-md">
         <div class="row q-col-gutter-md">
           <div class="col-12">
-            <FileSelector 
-              ref="fileSelectorRef" 
-              @files-changed="onFilesChanged" 
+            <FileSelector
+              ref="fileSelectorRef"
+              @files-changed="onFilesChanged"
             />
           </div>
           <div class="col-12">
@@ -46,9 +46,10 @@ const currentFiles = ref([])
 
 function onFilesChanged(files) {
   currentFiles.value = files
-  const paths = files.map(f => f.path)
-  if (paths.length > 0 && colorTableRef.value) {
-    colorTableRef.value.scanColors(paths)
+  // Извлекаем File objects и передаём в ColorTable
+  const fileObjects = files.map(f => f.file || f)
+  if (fileObjects.length > 0 && colorTableRef.value) {
+    colorTableRef.value.scanColors(fileObjects)
   }
 }
 </script>

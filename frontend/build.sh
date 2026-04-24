@@ -21,6 +21,8 @@ npm run build
 echo "📦 Упаковка приложения..."
 npm run electron:build
 
+npm run electron:build:win
+
 echo "✅ Готово! Файлы сборки находятся в папке ./release/"
 echo "   macOS: .dmg и .zip"
 echo "   Windows: .exe (если запускали на Windows)"
