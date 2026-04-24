@@ -87,15 +87,20 @@ function handleScanClick() {
 }
 
 async function scanColors(paths) {
-  if (!paths || paths.length === 0) {
+  // Преобразуем в массив строк, чтобы избежать ошибки клонирования Vue-реактивности
+  const pathsToScan = Array.isArray(paths) 
+    ? paths.map(p => typeof p === 'object' && p.path ? p.path : p) 
+    : [];
+
+  if (pathsToScan.length === 0) {
     $q.notify({ color: "warning", message: "Сначала выберите файлы!" });
     return;
   }
 
-  currentPaths.value = paths;
+  currentPaths.value = pathsToScan;
   loading.value = true;
   try {
-    const response = await api.scanColors(paths);
+    const response = await api.scanColors(pathsToScan);
     colors.value = response.colors.map((c) => ({
       ...c,
       selected: isDefaultSelected(c.code),

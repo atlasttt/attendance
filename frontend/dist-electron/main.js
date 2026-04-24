@@ -1,1 +1,300 @@
-var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=Object.getOwnPropertyNames,i=Object.getPrototypeOf,a=Object.prototype.hasOwnProperty,o=(e,i,o,s)=>{if(i&&typeof i==`object`||typeof i==`function`)for(var c=r(i),l=0,u=c.length,d;l<u;l++)d=c[l],!a.call(e,d)&&d!==o&&t(e,d,{get:(e=>i[e]).bind(null,d),enumerable:!(s=n(i,d))||s.enumerable});return e},s=(n,r,a)=>(a=n==null?{}:e(i(n)),o(r||!n||!n.__esModule?t(a,`default`,{value:n,enumerable:!0}):a,n));let c=require(`electron`),l=require(`path`),u=require(`exceljs`);u=s(u);let d=require(`fs`),f=require(`os`);var p;function m(){p=new c.BrowserWindow({width:1200,height:900,webPreferences:{nodeIntegration:!1,contextIsolation:!0,preload:(0,l.join)(__dirname,`preload.js`)}}),process.env.NODE_ENV===`development`?(p.loadURL(`http://localhost:5173`),p.webContents.openDevTools()):p.loadFile((0,l.join)(__dirname,`../dist/index.html`))}function h(){let e=(0,l.join)((0,f.homedir)(),`Library`,`Application Support`,`AttendanceTracker`);return(0,d.mkdirSync)(e,{recursive:!0}),e}function g(e){let t=e.toUpperCase();return[`FF9933`,`FFCC99`,`FFB366`,`FF8000`,`FFA500`,`FF9966`].includes(t)?`Оранжевый`:[`99CCFF`,`B3D9FF`,`66B2FF`,`0099FF`,`ADD8E6`,`87CEEB`].includes(t)?`Голубой`:t.startsWith(`00`)&&t[2]===`8`&&t[4]===`0`?`Зелёный`:t[2]===`0`&&t[4]===`0`&&parseInt(t.slice(0,2),16)>128?`Красный`:t[4]===`0`&&parseInt(t.slice(0,2),16)>200&&parseInt(t.slice(2,4),16)>200?`Жёлтый`:`Цвет #${t}`}c.ipcMain.handle(`select-files`,async()=>{let e=await c.dialog.showOpenDialog(p,{title:`Выберите Excel-файлы`,filters:[{name:`Excel files`,extensions:[`xlsx`]},{name:`All files`,extensions:[`*`]}],properties:[`openFile`,`multiSelections`]});return!e.canceled&&e.filePaths.length>0?e.filePaths:[]}),c.ipcMain.handle(`scan-colors`,async(e,t)=>{try{if(!Array.isArray(t)||t.length===0)return{error:`Не выбраны файлы`,colors:[]};let e={};for(let n of t)try{let t=new u.default.Workbook;await t.xlsx.readFile(n);let r=t.worksheets.length>0?t.worksheets[0]:null;if(!r)continue;let i=Math.min(r.actualRowCount||500,500),a=Math.min(r.actualColumnCount||70,70);for(let t=3;t<=i;t++){let n=r.getRow(t);for(let t=5;t<=a;t++){let r=n.getCell(t).fill;if(r&&r.type===`pattern`&&r.fgColor){let t=typeof r.fgColor.argb==`string`?r.fgColor.argb:r.fgColor;if(t&&t!==`00000000`){let n=String(t).slice(-6);e[n]=(e[n]||0)+1}}}}}catch(e){console.error(`Ошибка сканирования ${n}:`,e.message)}return{colors:Object.entries(e).map(([e,t])=>({code:e,hex:`#${e}`,name:g(e),count:t})).sort((e,t)=>t.count-e.count)}}catch(e){return{error:e.message}}}),c.ipcMain.handle(`count-selected`,async(e,{filePaths:t,month:n,year:r,colors:i})=>{try{if(!Array.isArray(t)||t.length===0)return{error:`Не выбраны файлы`,results:[]};let e={};for(let a of t)try{let t=new u.default.Workbook;await t.xlsx.readFile(a);let o=t.worksheets.length>0?t.worksheets[0]:null;if(!o)continue;let s=Math.min(o.actualRowCount||1e3,1e3),c=Math.min(o.actualColumnCount||70,70);for(let t=3;t<=s;t++){let s=o.getRow(t),l=s.getCell(2).value,u=s.getCell(3).value;if(!l)continue;let d=String(l);if(d.includes(`Группа`)||d.includes(`Отдел`)||d.includes(`Управление`)||d.includes(`Служба`)||d.includes(`Департамент`)||typeof s.getCell(1).value!=`number`)continue;let f={};i.forEach(e=>f[e]=0);for(let e=5;e<=c;e++){let t=s.getCell(e).fill;if(t&&t.type===`pattern`&&t.fgColor){let e=typeof t.fgColor.argb==`string`?t.fgColor.argb:t.fgColor;if(e&&e!==`00000000`){let t=String(e).slice(-6);i.includes(t)&&(f[t]=(f[t]||0)+1)}}}let p=`${l}|||${u}`;e[p]||(e[p]={employee:String(l),position:String(u||``),colorCounts:{},month:n,year:r,files:[],date:new Date().toISOString().slice(0,16).replace(`T`,` `)},i.forEach(t=>e[p].colorCounts[t]=0));for(let t of i)e[p].colorCounts[t]+=f[t];e[p].files.includes(a.split(`/`).pop())||e[p].files.push(a.split(`/`).pop())}}catch(e){console.error(`Ошибка подсчёта ${a}:`,e.message)}return{results:Object.values(e).map(e=>{let t=0,n={};for(let[r,i]of Object.entries(e.colorCounts))n[r]=Math.round(i/2),t+=n[r];return{...e,colorCounts:n,count:t}}).sort((e,t)=>t.count-e.count),colorCodes:i}}catch(e){return{error:e.message}}}),c.ipcMain.handle(`save-results`,async(e,t)=>{try{let e=(0,l.join)(h(),`attendance_results.json`),n=[];if((0,d.existsSync)(e)){let t=(0,d.readFileSync)(e,`utf-8`);n=JSON.parse(t)}return n.push(...t),(0,d.writeFileSync)(e,JSON.stringify(n,null,2),`utf-8`),{success:!0,path:e}}catch(e){return{error:e.message}}}),c.ipcMain.handle(`export-excel`,async(e,t)=>{try{if(!t||t.length===0)return{error:`Нет данных для экспорта`};let e=await c.dialog.showSaveDialog(p,{title:`Сохранить результаты`,defaultPath:`Результат_${t[0]?.month||``}_${t[0]?.year||``}.xlsx`,filters:[{name:`Excel`,extensions:[`xlsx`]}]});if(e.canceled)return{canceled:!0};let n=new u.default.Workbook,r=n.addWorksheet(`Результаты`),i=new Set;t.forEach(e=>{e.colorCounts&&Object.keys(e.colorCounts).forEach(e=>i.add(e))});let a=Array.from(i).sort(),o=[{header:`Сотрудник`,key:`employee`,width:40},{header:`Должность`,key:`position`,width:30}];return a.forEach(e=>{o.push({header:`#${e}`,key:`color_${e}`,width:15})}),o.push({header:`Период`,key:`period`,width:12},{header:`Файл`,key:`file`,width:30},{header:`Дата`,key:`date`,width:20}),r.columns=o,t.forEach(e=>{let t={employee:e.employee,position:e.position,period:`${e.month}.${e.year}`,file:e.files?.[0]||``,date:e.date};a.forEach(n=>{t[`color_${n}`]=e.colorCounts?.[n]||0}),r.addRow(t)}),await n.xlsx.writeFile(e.filePath),{success:!0,path:e.filePath}}catch(e){return{error:e.message}}}),c.app.whenReady().then(m),c.app.on(`window-all-closed`,()=>{process.platform!==`darwin`&&c.app.quit()}),c.app.on(`activate`,()=>{c.BrowserWindow.getAllWindows().length===0&&m()});
+//#region \0rolldown/runtime.js
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
+		key = keys[i];
+		if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
+			get: ((k) => from[k]).bind(null, key),
+			enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+		});
+	}
+	return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", {
+	value: mod,
+	enumerable: true
+}) : target, mod));
+//#endregion
+let electron = require("electron");
+let path = require("path");
+let exceljs = require("exceljs");
+exceljs = __toESM(exceljs);
+let fs = require("fs");
+let os = require("os");
+//#region electron/main.js
+var mainWindow;
+function createWindow() {
+	mainWindow = new electron.BrowserWindow({
+		width: 1200,
+		height: 900,
+		webPreferences: {
+			nodeIntegration: false,
+			contextIsolation: true,
+			preload: (0, path.join)(__dirname, "preload.js")
+		}
+	});
+	if (process.env.NODE_ENV === "development") {
+		mainWindow.loadURL("http://localhost:5173");
+		mainWindow.webContents.openDevTools();
+	} else mainWindow.loadFile((0, path.join)(__dirname, "../dist/index.html"));
+}
+function getAppDir() {
+	const dir = (0, path.join)((0, os.homedir)(), "Library", "Application Support", "AttendanceTracker");
+	(0, fs.mkdirSync)(dir, { recursive: true });
+	return dir;
+}
+function getColorName(code) {
+	const upper = code.toUpperCase();
+	const orange = [
+		"FF9933",
+		"FFCC99",
+		"FFB366",
+		"FF8000",
+		"FFA500",
+		"FF9966"
+	];
+	const blue = [
+		"99CCFF",
+		"B3D9FF",
+		"66B2FF",
+		"0099FF",
+		"ADD8E6",
+		"87CEEB"
+	];
+	if (orange.includes(upper)) return "Оранжевый";
+	if (blue.includes(upper)) return "Голубой";
+	if (upper.startsWith("00") && upper[2] === "8" && upper[4] === "0") return "Зелёный";
+	if (upper[2] === "0" && upper[4] === "0" && parseInt(upper.slice(0, 2), 16) > 128) return "Красный";
+	if (upper[4] === "0" && parseInt(upper.slice(0, 2), 16) > 200 && parseInt(upper.slice(2, 4), 16) > 200) return "Жёлтый";
+	return `Цвет #${upper}`;
+}
+electron.ipcMain.handle("select-files", async () => {
+	const result = await electron.dialog.showOpenDialog(mainWindow, {
+		title: "Выберите Excel-файлы",
+		filters: [{
+			name: "Excel files",
+			extensions: ["xlsx"]
+		}, {
+			name: "All files",
+			extensions: ["*"]
+		}],
+		properties: ["openFile", "multiSelections"]
+	});
+	if (!result.canceled && result.filePaths.length > 0) return result.filePaths;
+	return [];
+});
+electron.ipcMain.handle("scan-colors", async (event, filePaths) => {
+	try {
+		if (!Array.isArray(filePaths) || filePaths.length === 0) return {
+			error: "Не выбраны файлы",
+			colors: []
+		};
+		const colorCounts = {};
+		for (const filePath of filePaths) try {
+			const workbook = new exceljs.default.Workbook();
+			await workbook.xlsx.readFile(filePath);
+			const worksheet = workbook.worksheets.length > 0 ? workbook.worksheets[0] : null;
+			if (!worksheet) continue;
+			const maxRow = Math.min(worksheet.actualRowCount || 500, 500);
+			const maxCol = Math.min(worksheet.actualColumnCount || 70, 70);
+			for (let row = 3; row <= maxRow; row++) {
+				const worksheetRow = worksheet.getRow(row);
+				for (let col = 5; col <= maxCol; col++) {
+					const fill = worksheetRow.getCell(col).fill;
+					if (fill && fill.type === "pattern" && fill.fgColor) {
+						const color = typeof fill.fgColor.argb === "string" ? fill.fgColor.argb : fill.fgColor;
+						if (color && color !== "00000000") {
+							const hex = String(color).slice(-6);
+							colorCounts[hex] = (colorCounts[hex] || 0) + 1;
+						}
+					}
+				}
+			}
+		} catch (err) {
+			console.error(`Ошибка сканирования ${filePath}:`, err.message);
+		}
+		return { colors: Object.entries(colorCounts).map(([code, count]) => ({
+			code,
+			hex: `#${code}`,
+			name: getColorName(code),
+			count
+		})).sort((a, b) => b.count - a.count) };
+	} catch (error) {
+		return { error: error.message };
+	}
+});
+electron.ipcMain.handle("count-selected", async (event, { filePaths, month, year, colors }) => {
+	try {
+		if (!Array.isArray(filePaths) || filePaths.length === 0) return {
+			error: "Не выбраны файлы",
+			results: []
+		};
+		const empMap = {};
+		for (const filePath of filePaths) try {
+			const workbook = new exceljs.default.Workbook();
+			await workbook.xlsx.readFile(filePath);
+			const worksheet = workbook.worksheets.length > 0 ? workbook.worksheets[0] : null;
+			if (!worksheet) continue;
+			const maxRow = Math.min(worksheet.actualRowCount || 1e3, 1e3);
+			const maxCol = Math.min(worksheet.actualColumnCount || 70, 70);
+			for (let row = 3; row <= maxRow; row++) {
+				const worksheetRow = worksheet.getRow(row);
+				const employee = worksheetRow.getCell(2).value;
+				const position = worksheetRow.getCell(3).value;
+				if (!employee) continue;
+				const empStr = String(employee);
+				if (empStr.includes("Группа") || empStr.includes("Отдел") || empStr.includes("Управление") || empStr.includes("Служба") || empStr.includes("Департамент")) continue;
+				if (typeof worksheetRow.getCell(1).value !== "number") continue;
+				const colorCounts = {};
+				colors.forEach((c) => colorCounts[c] = 0);
+				for (let col = 5; col <= maxCol; col++) {
+					const fill = worksheetRow.getCell(col).fill;
+					if (fill && fill.type === "pattern" && fill.fgColor) {
+						const color = typeof fill.fgColor.argb === "string" ? fill.fgColor.argb : fill.fgColor;
+						if (color && color !== "00000000") {
+							const hex = String(color).slice(-6);
+							if (colors.includes(hex)) colorCounts[hex] = (colorCounts[hex] || 0) + 1;
+						}
+					}
+				}
+				const key = `${employee}|||${position}`;
+				if (!empMap[key]) {
+					empMap[key] = {
+						employee: String(employee),
+						position: String(position || ""),
+						colorCounts: {},
+						month,
+						year,
+						files: [],
+						date: (/* @__PURE__ */ new Date()).toISOString().slice(0, 16).replace("T", " ")
+					};
+					colors.forEach((c) => empMap[key].colorCounts[c] = 0);
+				}
+				for (const c of colors) empMap[key].colorCounts[c] += colorCounts[c];
+				if (!empMap[key].files.includes(filePath.split("/").pop())) empMap[key].files.push(filePath.split("/").pop());
+			}
+		} catch (err) {
+			console.error(`Ошибка подсчёта ${filePath}:`, err.message);
+		}
+		return {
+			results: Object.values(empMap).map((emp) => {
+				let total = 0;
+				const dividedCounts = {};
+				for (const [color, count] of Object.entries(emp.colorCounts)) {
+					dividedCounts[color] = Math.round(count / 2);
+					total += dividedCounts[color];
+				}
+				return {
+					...emp,
+					colorCounts: dividedCounts,
+					count: total
+				};
+			}).sort((a, b) => b.count - a.count),
+			colorCodes: colors
+		};
+	} catch (error) {
+		return { error: error.message };
+	}
+});
+electron.ipcMain.handle("save-results", async (event, results) => {
+	try {
+		const resultsFile = (0, path.join)(getAppDir(), "attendance_results.json");
+		let existing = [];
+		if ((0, fs.existsSync)(resultsFile)) {
+			const data = (0, fs.readFileSync)(resultsFile, "utf-8");
+			existing = JSON.parse(data);
+		}
+		existing.push(...results);
+		(0, fs.writeFileSync)(resultsFile, JSON.stringify(existing, null, 2), "utf-8");
+		return {
+			success: true,
+			path: resultsFile
+		};
+	} catch (error) {
+		return { error: error.message };
+	}
+});
+electron.ipcMain.handle("export-excel", async (event, results) => {
+	try {
+		if (!results || results.length === 0) return { error: "Нет данных для экспорта" };
+		const outputPath = await electron.dialog.showSaveDialog(mainWindow, {
+			title: "Сохранить результаты",
+			defaultPath: `Результат_${results[0]?.month || ""}_${results[0]?.year || ""}.xlsx`,
+			filters: [{
+				name: "Excel",
+				extensions: ["xlsx"]
+			}]
+		});
+		if (outputPath.canceled) return { canceled: true };
+		const workbook = new exceljs.default.Workbook();
+		const worksheet = workbook.addWorksheet("Результаты");
+		const colorCodes = /* @__PURE__ */ new Set();
+		results.forEach((r) => {
+			if (r.colorCounts) Object.keys(r.colorCounts).forEach((c) => colorCodes.add(c));
+		});
+		const sortedCodes = Array.from(colorCodes).sort();
+		const columns = [{
+			header: "Сотрудник",
+			key: "employee",
+			width: 40
+		}, {
+			header: "Должность",
+			key: "position",
+			width: 30
+		}];
+		sortedCodes.forEach((code) => {
+			columns.push({
+				header: `#${code}`,
+				key: `color_${code}`,
+				width: 15
+			});
+		});
+		columns.push({
+			header: "Период",
+			key: "period",
+			width: 12
+		}, {
+			header: "Файл",
+			key: "file",
+			width: 30
+		}, {
+			header: "Дата",
+			key: "date",
+			width: 20
+		});
+		worksheet.columns = columns;
+		results.forEach((r) => {
+			const row = {
+				employee: r.employee,
+				position: r.position,
+				period: `${r.month}.${r.year}`,
+				file: r.files?.[0] || "",
+				date: r.date
+			};
+			sortedCodes.forEach((code) => {
+				row[`color_${code}`] = r.colorCounts?.[code] || 0;
+			});
+			worksheet.addRow(row);
+		});
+		await workbook.xlsx.writeFile(outputPath.filePath);
+		return {
+			success: true,
+			path: outputPath.filePath
+		};
+	} catch (error) {
+		return { error: error.message };
+	}
+});
+electron.app.whenReady().then(createWindow);
+electron.app.on("window-all-closed", () => {
+	if (process.platform !== "darwin") electron.app.quit();
+});
+electron.app.on("activate", () => {
+	if (electron.BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+//#endregion

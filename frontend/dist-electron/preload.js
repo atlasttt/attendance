@@ -1,1 +1,10 @@
-let e=require(`electron`);e.contextBridge.exposeInMainWorld(`electronAPI`,{selectFiles:()=>e.ipcRenderer.invoke(`select-files`),scanColors:t=>e.ipcRenderer.invoke(`scan-colors`,t),countSelected:t=>e.ipcRenderer.invoke(`count-selected`,t),saveResults:t=>e.ipcRenderer.invoke(`save-results`,t),exportExcel:t=>e.ipcRenderer.invoke(`export-excel`,t)});
+let electron = require("electron");
+//#region electron/preload.js
+electron.contextBridge.exposeInMainWorld("electronAPI", {
+	selectFiles: () => electron.ipcRenderer.invoke("select-files"),
+	scanColors: (filePaths) => electron.ipcRenderer.invoke("scan-colors", filePaths),
+	countSelected: (data) => electron.ipcRenderer.invoke("count-selected", data),
+	saveResults: (results) => electron.ipcRenderer.invoke("save-results", results),
+	exportExcel: (results) => electron.ipcRenderer.invoke("export-excel", results)
+});
+//#endregion
