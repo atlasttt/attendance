@@ -12,11 +12,7 @@
           @click="countSelected"
           :loading="loading"
         />
-        <q-btn
-          color="secondary"
-          label="📋 Экспорт всех"
-          @click="exportExcel"
-        />
+        <q-btn color="secondary" label="📋 Экспорт всех" @click="exportExcel" />
         <q-btn
           color="info"
           label="📋 Экспорт видимых"
@@ -60,7 +56,8 @@
             <q-item v-bind="scope.itemProps" class="sort-option">
               <q-item-section>
                 <div class="sort-label">
-                  <span v-if="scope.opt.color"
+                  <span
+                    v-if="scope.opt.color"
                     class="color-circle"
                     :style="{ backgroundColor: scope.opt.hex }"
                   />
@@ -234,19 +231,15 @@ const filteredResults = computed(() => {
   const threshold = Number(minCount.value) || 0;
   if (threshold > 0) {
     filtered = filtered.filter((r) => {
-      const totalCount = r.count || 0;
-      
-      // Проверяем общее количество
-      if (totalCount > threshold) return true;
-      
       // Проверяем значения по периодам для каждого цвета
+      // Показываем сотрудника, если хотя бы один результат >= порогу
       for (const code of colorCodes.value) {
         const values = periodValues.value[r.employee]?.[code] || [];
         for (const val of values) {
-          if (val > threshold) return true;
+          if (val >= threshold) return true;
         }
       }
-      
+
       return false;
     });
   }
@@ -510,7 +503,7 @@ async function countSelected() {
         const emp = periodMap[period][empKey];
         if (!pValues[emp.employee]) {
           pValues[emp.employee] = {};
-          selectedColors.forEach(c => {
+          selectedColors.forEach((c) => {
             pValues[emp.employee][c] = [];
           });
         }
@@ -601,7 +594,11 @@ async function exportVisibleExcel() {
   try {
     const data = JSON.parse(JSON.stringify(filteredResults.value));
     const pValues = JSON.parse(JSON.stringify(periodValues.value));
-    const result = await api.exportVisibleExcel(data, colorCodes.value, pValues);
+    const result = await api.exportVisibleExcel(
+      data,
+      colorCodes.value,
+      pValues,
+    );
     if (result.error) {
       $q.notify({
         color: "negative",
@@ -640,7 +637,7 @@ function showAllHidden() {
 // Отключаем сортировку по клику на шапку
 function onTableRequest(props) {
   // Сбрасываем сортировку Quasar - используем только наш селект
-  props.pagination.sortBy = '';
+  props.pagination.sortBy = "";
   props.pagination.sortDesc = false;
   props.done();
 }
