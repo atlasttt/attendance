@@ -88,6 +88,8 @@ export async function countSelected({ fileObjects, month, year, colors }) {
     }
 
     const empMap = {}
+    let hoursColIndex = null
+    let normColIndex = null
 
     for (const file of fileObjects) {
       try {
@@ -97,6 +99,26 @@ export async function countSelected({ fileObjects, month, year, colors }) {
         const worksheet = workbook.worksheets.length > 0 ? workbook.worksheets[0] : null
 
         if (!worksheet) continue
+
+        // Ищем колонки с часами и нормой по заголовкам
+        if (hoursColIndex === null || normColIndex === null) {
+          const headerRow = worksheet.getRow(1)
+          const maxCol = Math.min(worksheet.actualColumnCount || 70, 70)
+          
+          for (let col = 1; col <= maxCol; col++) {
+            const cellValue = headerRow.getCell(col).value
+            if (cellValue) {
+              const str = String(cellValue).trim()
+              
+              if (str === 'Кол-во часов между входом и выходом') {
+                hoursColIndex = col
+              }
+              if (str === 'Норма часов') {
+                normColIndex = col
+              }
+            }
+          }
+        }
 
         const maxRow = Math.min(worksheet.actualRowCount || 1000, 1000)
         const maxCol = Math.min(worksheet.actualColumnCount || 70, 70)
@@ -136,6 +158,69 @@ export async function countSelected({ fileObjects, month, year, colors }) {
             }
           }
 
+          // Извлекаем часы и норму
+          const hoursCell = hoursColIndex ? worksheetRow.getCell(hoursColIndex) : null
+          const normCell = normColIndex ? worksheetRow.getCell(normColIndex) : null
+
+          // Парсим формат "ЧЧ:ММ" в десятичные часы
+          function parseTimeValueFromCell(cell) {
+            if (!cell) return null
+            
+            const raw = cell.value
+            
+            if (raw === null || raw === undefined) return null
+            
+            // Проверяем Date (работает в любом context)
+            function isDate(val) {
+              return Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val.getTime())
+            }
+            
+            function dateToHours(date) {
+              const base = Date.UTC(1899, 11, 30)
+              const diffMs = date.getTime() - base
+              const totalHours = diffMs / (1000 * 60 * 60)
+              return Math.round(totalHours * 100) / 100
+            }
+            
+            // Если Date (норма часов) — ПРОВЕРЯЕМ ПЕРВЫМ!
+            if (isDate(raw)) {
+              return dateToHours(raw)
+            }
+            
+            // Если это object с formula/result (ExcelJS rich value)
+            if (typeof raw === 'object') {
+              // Если внутри result - Date
+              if (isDate(raw.result)) {
+                return dateToHours(raw.result)
+              }
+              
+              // Если строка
+              if (typeof raw === 'string') {
+                const parts = raw.split(':')
+                if (parts.length >= 2) {
+                  const h = parseInt(parts[0]) || 0
+                  const m = parseInt(parts[1]) || 0
+                  return Math.round((h + m / 60) * 100) / 100
+                }
+              }
+              
+              return null
+            }
+            
+            // Если просто число
+            if (typeof raw === 'number') {
+              if (raw > 0 && raw < 1) {
+                return Math.round(raw * 24 * 100) / 100
+              }
+              return raw
+            }
+            
+            return null
+          }
+
+          const parsedHours = parseTimeValueFromCell(hoursCell)
+          const parsedNorm = parseTimeValueFromCell(normCell)
+
           const key = `${employee}|||${position}`
           if (!empMap[key]) {
             empMap[key] = {
@@ -146,6 +231,8 @@ export async function countSelected({ fileObjects, month, year, colors }) {
               year,
               files: [],
               date: new Date().toISOString().slice(0, 16).replace('T', ' '),
+              hours: null,
+              norm: null,
             }
             colors.forEach(c => empMap[key].colorCounts[c] = 0)
           }
@@ -153,6 +240,14 @@ export async function countSelected({ fileObjects, month, year, colors }) {
           // Суммируем по цветам
           for (const c of colors) {
             empMap[key].colorCounts[c] += colorCounts[c]
+          }
+
+          // Сохраняем часы и норму (последнее значение)
+          if (parsedHours !== null && parsedHours !== undefined) {
+            empMap[key].hours = parsedHours
+          }
+          if (parsedNorm !== null && parsedNorm !== undefined) {
+            empMap[key].norm = parsedNorm
           }
 
           if (!empMap[key].files.includes(file.name)) {

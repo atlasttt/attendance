@@ -122,6 +122,9 @@
                 <q-tooltip>Скрыть сотрудника</q-tooltip>
               </q-btn>
             </template>
+            <template v-else-if="props.col.name === 'percent'">
+              <span v-html="getPercentCellValue(props.row)"></span>
+            </template>
             <template v-else-if="props.col.name.startsWith('color_')">
               <span v-html="getCellValue(props.row, props.col.name)"></span>
             </template>
@@ -155,6 +158,7 @@ const sortOption = ref("employee_asc");
 const minCount = ref(0); // Минимальный порог для фильтрации
 const hiddenEmployees = ref(new Set()); // Скрытые сотрудники
 const periodValues = ref({}); // { employee: { colorCode: [val1, val2, val3] } }
+const periodHours = ref({}); // { employee: { hours: [h1, h2], norm: [n1, n2], percent: [p1, p2] } }
 const periods = ref([]); // Список периодов для отображения
 
 // Варианты сортировки
@@ -335,6 +339,13 @@ const columns = computed(() => {
       align: "left",
       sortable: false,
     },
+    {
+      name: "percent",
+      label: "% от нормы",
+      field: "percent",
+      align: "center",
+      sortable: false,
+    },
   ];
 
   // Динамические колонки для каждого цвета
@@ -421,6 +432,47 @@ function getCellValue(row, colName) {
   return html;
 }
 
+function getPercentCellValue(row) {
+  const hoursData = periodHours.value[row.employee];
+  if (!hoursData || !hoursData.percent || hoursData.percent.length === 0) {
+    return "—";
+  }
+
+  const percents = hoursData.percent;
+
+  if (percents.length === 1) {
+    return `${percents[0]}%`;
+  }
+
+  // Для нескольких периодов показываем через разделитель
+  let html = "";
+  for (let i = 0; i < percents.length; i++) {
+    const p = percents[i];
+
+    if (i > 0) {
+      const prev = percents[i - 1];
+      const d = p - prev;
+
+      if (d > 0)
+        html += `<span style="font-weight: 900; font-size: 1.6em; color: #e53935;"> ↑ </span>`;
+      else if (d < 0)
+        html += `<span style="font-weight: 900; font-size: 1.6em; color: #43a047;"> ↓ </span>`;
+      else
+        html += `<span style="font-weight: 900; font-size: 1em; color: #999;"> → </span>`;
+    }
+
+    // Определяем цвет по отклонению от 100%
+    let cellColor = "#333";
+    if (p < 80) cellColor = "#e53935"; // Красный — сильно ниже нормы
+    else if (p < 95) cellColor = "#ff9800"; // Оранжевый — чуть ниже
+    else if (p <= 105) cellColor = "#43a047"; // Зелёный — в норме
+    else cellColor = "#1976d2"; // Синий — выше нормы
+
+    html += `<span style="color: ${cellColor}">${p}%</span>`;
+  }
+  return html;
+}
+
 async function countSelected() {
   if (!props.colorTable || props.files.length === 0) {
     $q.notify({
@@ -432,6 +484,9 @@ async function countSelected() {
 
   loading.value = true;
   try {
+    // Сбрасываем данные часов перед новым подсчётом
+    periodHours.value = {};
+
     const selectedColors = props.colorTable.colors
       .filter((c) => c.selected)
       .map((c) => c.code);
@@ -475,6 +530,8 @@ async function countSelected() {
           employee: r.employee,
           position: r.position,
           colorCounts: {},
+          hours: r.hours || 0,
+          norm: r.norm || 0,
         };
         selectedColors.forEach(
           (c) => (periodMap[period][key].colorCounts[c] = 0),
@@ -482,6 +539,13 @@ async function countSelected() {
       }
       for (const c of selectedColors) {
         periodMap[period][key].colorCounts[c] += r.colorCounts?.[c] || 0;
+      }
+      // Сохраняем последние значения часов и нормы
+      if (r.hours !== null && r.hours !== undefined) {
+        periodMap[period][key].hours = r.hours;
+      }
+      if (r.norm !== null && r.norm !== undefined) {
+        periodMap[period][key].norm = r.norm;
       }
     }
 
@@ -514,6 +578,28 @@ async function countSelected() {
     }
 
     periodValues.value = pValues;
+
+    // Формируем periodHours: { employee: { hours: [h1, h2], norm: [n1, n2], percent: [p1, p2] } }
+    const pHours = {};
+    for (const period of sortedPeriods) {
+      for (const empKey of Object.keys(periodMap[period] || {})) {
+        const emp = periodMap[period][empKey];
+        if (!pHours[emp.employee]) {
+          pHours[emp.employee] = {
+            hours: [],
+            norm: [],
+            percent: [],
+          };
+        }
+        const hours = emp.hours || 0;
+        const norm = emp.norm || 0;
+        const percent = norm > 0 ? Math.round((hours / norm) * 100) : 0;
+        pHours[emp.employee].hours.push(hours);
+        pHours[emp.employee].norm.push(norm);
+        pHours[emp.employee].percent.push(percent);
+      }
+    }
+    periodHours.value = pHours;
 
     // Агрегируем по сотруднику для UI
     const empMap = {};
