@@ -308,6 +308,7 @@ export async function exportExcel(results) {
       columns.push({ header: `#${code}`, key: `color_${code}`, width: 15 })
     })
     columns.push(
+      { header: '% от нормы', key: 'percent', width: 15 },
       { header: 'Период', key: 'period', width: 12 },
       { header: 'Файл', key: 'file', width: 30 },
       { header: 'Дата', key: 'date', width: 20 },
@@ -327,6 +328,14 @@ export async function exportExcel(results) {
       sortedCodes.forEach(code => {
         row[`color_${code}`] = r.colorCounts?.[code] || 0
       })
+      
+      // Процент от нормы
+      if (r.hours !== null && r.hours !== undefined && r.norm && r.norm > 0) {
+        row['percent'] = `${Math.round((r.hours / r.norm) * 100)}%`
+      } else {
+        row['percent'] = ''
+      }
+      
       worksheet.addRow(row)
     })
 
@@ -354,7 +363,7 @@ export async function exportExcel(results) {
 }
 
 // Экспорт видимых данных (с трендами, как в таблице)
-export async function exportVisibleExcel(results, colorCodes, periodValues) {
+export async function exportVisibleExcel(results, colorCodes, periodValues, periodHours) {
   try {
     if (!results || results.length === 0) {
       return { error: 'Нет данных для экспорта' }
@@ -363,10 +372,11 @@ export async function exportVisibleExcel(results, colorCodes, periodValues) {
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('Результаты')
 
-    // Формируем колонки: Сотрудник, Должность, цвета, Total
+    // Формируем колонки: Сотрудник, Должность, % от нормы, цвета, Total
     const columns = [
       { header: 'Сотрудник', key: 'employee', width: 40 },
       { header: 'Должность', key: 'position', width: 30 },
+      { header: '% от нормы', key: 'percent', width: 25 },
     ]
     colorCodes.forEach(code => {
       columns.push({ header: `#${code}`, key: `color_${code}`, width: 20 })
@@ -395,12 +405,37 @@ export async function exportVisibleExcel(results, colorCodes, periodValues) {
       return result
     }
 
+    // Формируем процент от нормы с трендами
+    function formatPercentValue(employee) {
+      if (!periodHours || !periodHours[employee]) return ''
+      const data = periodHours[employee]
+      const percents = data.percent || []
+      
+      if (percents.length === 0) return ''
+      if (percents.length === 1) return `${percents[0]}%`
+
+      let result = ''
+      for (let i = 0; i < percents.length; i++) {
+        const p = percents[i]
+        if (i > 0) {
+          const prev = percents[i - 1]
+          const d = p - prev
+          if (d > 0) result += ' ↑ '
+          else if (d < 0) result += ' ↓ '
+          else result += ' → '
+        }
+        result += String(p) + '%'
+      }
+      return result
+    }
+
     // Добавляем строки
     results.forEach(r => {
       const row = {
         employee: r.employee,
         position: r.position,
         count: r.count || 0,
+        percent: formatPercentValue(r.employee),
       }
       colorCodes.forEach(code => {
         const values = periodValues[r.employee]?.[code] || []

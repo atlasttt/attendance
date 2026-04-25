@@ -680,10 +680,12 @@ async function exportVisibleExcel() {
   try {
     const data = JSON.parse(JSON.stringify(filteredResults.value));
     const pValues = JSON.parse(JSON.stringify(periodValues.value));
+    const pHrs = JSON.parse(JSON.stringify(periodHours.value));
     const result = await api.exportVisibleExcel(
       data,
       colorCodes.value,
       pValues,
+      pHrs,
     );
     if (result.error) {
       $q.notify({
